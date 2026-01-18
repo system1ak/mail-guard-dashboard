@@ -223,19 +223,17 @@ if page == "🔍 Prediction":
                 st.metric("Avg Word Length", f"{np.mean([len(w) for w in user_text.split()]) if user_text.split() else 0:.1f}")
         
         # Submit button
-        if st.button("🚀 Analyze Text", use_container_width=True, type="primary"):
-            if not user_text.strip():
-                st.error("⚠️ Please enter some text to analyze.")
-            else:
-                with st.spinner("🔄 Analyzing text..."):
-                    # Extract features
-                    feature_extractor = st.session_state.feature_extractor
-                    text_features = feature_extractor.transform(user_text)
-                    
-                    # Simulate model prediction (would use real model)
-                    # In production: proba = model.predict_proba(text_features.reshape(1, -1))[0][1]
-                    np.random.seed(hash(user_text) % 2**32)
-                    proba_spam = np.random.uniform(0.3, 0.9)
+        # Real model prediction
+models = load_models()
+if models['model_loaded']:
+    text_features = models['extractor'].transform(user_text)
+    proba_spam = models['model'].predict_proba(
+        text_features.reshape(1, -1)
+    )
+else:
+    st.error("Model not loaded!")
+    proba_spam = 0.5
+
                     
                     # Determine classification
                     threshold = 0.5
