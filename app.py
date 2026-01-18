@@ -134,16 +134,20 @@ class TextFeatureExtractor:
 # ===================================
 @st.cache_resource
 def load_models():
-    """Load pre-trained models and feature extractor"""
+    """Load pre-trained models from pickle files"""
     try:
-        # Placeholder - in production these would be loaded from pickled files
-        # For now, we'll create dummy models that accept the right input shapes
+        with open('models/stacking_model.pkl', 'rb') as f:
+            model = pickle.load(f)
+        with open('models/feature_extractor.pkl', 'rb') as f:
+            extractor = pickle.load(f)
         return {
-            'model_loaded': False,
-            'message': 'Models need to be loaded from Cloud Storage or GitHub'
+            'model': model,
+            'extractor': extractor,
+            'model_loaded': True
         }
     except Exception as e:
         return {'model_loaded': False, 'message': str(e)}
+
 
 def initialize_session():
     """Initialize session variables"""
