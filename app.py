@@ -166,14 +166,13 @@ class TextFeatureExtractor:
         return np.array([self.transform(text) for text in texts_list])
 
 # ============================================
-# LOAD OR INITIALIZE MODELS
+# LOAD TRAINED MODELS
 # ============================================
 
 @st.cache_resource
 def load_models():
-    """Load pre-trained models or initialize dummy ones"""
+    """Load pre-trained models from pickle files"""
     
-    # Try to load from pickle files
     try:
         with open('models/stacking_model.pkl', 'rb') as f:
             stacking_clf = pickle.load(f)
@@ -181,47 +180,20 @@ def load_models():
             feature_extractor = pickle.load(f)
         with open('models/scaler.pkl', 'rb') as f:
             scaler = pickle.load(f)
-        return stacking_clf, feature_extractor, scaler, True
+        with open('models/best_threshold.pkl', 'rb') as f:
+            best_threshold = pickle.load(f)
+        
+        st.success("✅ Production models loaded successfully!")
+        return stacking_clf, feature_extractor, scaler, best_threshold, True
     
-    except FileNotFoundError:
-        # Initialize demo models
-        st.info("📦 Using demo models (pre-trained models not found)")
-        
-        # Initialize feature extractor
-        feature_extractor = TextFeatureExtractor()
-        dummy_texts = [
-            "special offer limited time click here now",
-            "dear customer verify account information",
-            "congratulations you have won",
-            "free money no strings attached",
-            "act now urgent reply"
-        ]
-        feature_extractor.fit(dummy_texts)
-        
-        # Initialize stacking ensemble
-        base_models = [
-            ('gnb', GaussianNB()),
-            ('lr', LogisticRegression(max_iter=1000, random_state=42)),
-            ('svm', SVC(probability=True, random_state=42)),
-            ('xgb', XGBClassifier(n_estimators=10, verbosity=0, random_state=42))
-        ]
-        
-        stacking_clf = StackingClassifier(
-            estimators=base_models,
-            final_estimator=LogisticRegression(max_iter=1000, random_state=42),
-            cv=3,
-            n_jobs=-1
-        )
-        
-        # Train on dummy data
-        X_dummy = np.random.randn(100, 57)
-        y_dummy = np.random.randint(0, 2, 100)
-        stacking_clf.fit(X_dummy, y_dummy)
-        
-        scaler = StandardScaler()
-        scaler.fit(X_dummy)
-        
-        return stacking_clf, feature_extractor, scaler, False
+    except FileNotFoundError as e:
+        st.error(f"❌ Error: Could not load trained models - {str(e)}")
+        st.error("Please ensure model files exist in 'models/' directory:")
+        st.error("  • stacking_model.pkl")
+        st.error("  • feature_extractor.pkl")
+        st.error("  • scaler.pkl")
+        st.error("  • best_threshold.pkl")
+        return None, None, None, None, False
 
 # ============================================
 # STREAMLIT PAGE CONFIGURATION
@@ -251,7 +223,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Load models
-stacking_clf, feature_extractor, scaler, models_loaded = load_models()
+stacking_clf, feature_extractor, scaler, best_threshold, models_loaded = load_models()
 
 # ============================================
 # SIDEBAR NAVIGATION
@@ -262,14 +234,14 @@ st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Select Page:",
-    ["🔍 Prediction", "📊 Analytics", "📈 Batch Processing", "ℹ️ About Model"]
+    ["🔍 Prediction", "📊 Analytics", "ℹ️ About Model"]
 )
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### ℹ️ Info")
-st.sidebar.write("**Version:** 1.0.0")
-st.sidebar.write("**Model:** Stacking Ensemble")
-st.sidebar.write("**Status:** " + ("✅ Production Ready" if models_loaded else "⚠️ Demo Mode"))
+st.sidebar.write("**Version:** 2.0.0")
+st.sidebar.write("**Model:** Stacking Ensemble (Production)")
+st.sidebar.write("**Status:** " + ("✅ Production Ready" if models_loaded else "❌ Model Missing"))
 
 # ============================================
 # PAGE 1: REAL-TIME PREDICTION
@@ -281,150 +253,153 @@ if page == "🔍 Prediction":
     
     st.markdown("---")
     
-    # Input section
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        user_email = st.text_area(
-            "📝 Paste your email text below:",
-            placeholder="Enter email content here... (Subject + Body)",
-            height=250,
-            label_visibility="collapsed"
-        )
-    
-    with col2:
-        st.write("")
-        st.write("")
-        st.write("")
-        submit_btn = st.button("🔍 Analyze", use_container_width=True, type="primary")
-    
-    # Settings
-    col1, col2 = st.columns(2)
-    with col1:
-        threshold = st.slider("Spam Decision Threshold", 0.0, 1.0, 0.5, 0.01)
-    with col2:
-        confidence_level = st.selectbox("Confidence Display", ["High", "Medium", "Low"])
-    
-    # Analysis
-    if submit_btn and user_email:
-        st.markdown("---")
-        
-        # Extract features
-        text_features = feature_extractor.transform(user_email)
-        sample = text_features.reshape(1, -1)
-        
-        # Predict
-        proba_spam = stacking_clf.predict_proba(sample)[0][1]
-        pred_class = 1 if proba_spam >= threshold else 0
-        
-        # Display main result
-        if pred_class == 1:
-            st.error(f"⚠️ **SPAM DETECTED**", icon="🚨")
-            confidence = proba_spam * 100
-        else:
-            st.success(f"✅ **LEGITIMATE EMAIL**", icon="✔️")
-            confidence = (1 - proba_spam) * 100
-        
-        # Key metrics
-        col1, col2, col3, col4 = st.columns(4)
+    if not models_loaded:
+        st.error("⚠️ Models not loaded. Please ensure trained models are available.")
+    else:
+        # Input section
+        col1, col2 = st.columns([3, 1])
         
         with col1:
-            st.metric("Spam Score", f"{proba_spam*100:.2f}%", delta=f"{proba_spam*100 - 50:.1f}%" if proba_spam > 0.5 else f"{proba_spam*100 - 50:.1f}%")
+            user_email = st.text_area(
+                "📝 Paste your email text below:",
+                placeholder="Enter email content here... (Subject + Body)",
+                height=250,
+                label_visibility="collapsed"
+            )
+        
         with col2:
-            st.metric("Confidence", f"{confidence:.2f}%")
-        with col3:
-            st.metric("Threshold", f"{threshold:.3f}")
-        with col4:
-            st.metric("Decision", "SPAM" if pred_class == 1 else "SAFE")
+            st.write("")
+            st.write("")
+            st.write("")
+            submit_btn = st.button("🔍 Analyze", use_container_width=True, type="primary")
         
-        # Detailed analysis
-        st.markdown("### 📊 Detailed Analysis")
-        
+        # Settings
         col1, col2 = st.columns(2)
-        
         with col1:
-            st.markdown("#### 📝 Text Statistics")
-            words = user_email.split()
-            sentences = user_email.split('.')
-            special_chars = sum(1 for c in user_email if c in string.punctuation)
-            capitals = sum(1 for c in user_email if c.isupper())
-            
-            st.write(f"• **Total Characters:** {len(user_email):,}")
-            st.write(f"• **Total Words:** {len(words):,}")
-            st.write(f"• **Total Sentences:** {len(sentences):,}")
-            st.write(f"• **Average Word Length:** {len(user_email) / max(len(words), 1):.2f}")
-            st.write(f"• **Special Characters:** {special_chars} ({special_chars/max(len(user_email), 1)*100:.2f}%)")
-            st.write(f"• **Capital Letters:** {capitals} ({capitals/max(len(user_email), 1)*100:.2f}%)")
-        
+            confidence_level = st.selectbox("Confidence Display", ["High", "Medium", "Low"])
         with col2:
-            st.markdown("#### 🔍 Spam Indicators")
+            st.write("")  # Placeholder for spacing
+        
+        # Analysis
+        if submit_btn and user_email:
+            st.markdown("---")
             
-            # Check for common spam patterns
-            spam_indicators = []
+            # Extract features
+            text_features = feature_extractor.transform(user_email)
+            sample = text_features.reshape(1, -1)
             
-            if len(words) > 500:
-                spam_indicators.append("✓ Long message (spam indicator)")
-            if special_chars / max(len(user_email), 1) > 0.1:
-                spam_indicators.append("✓ High special character density")
-            if capitals / max(len(user_email), 1) > 0.1:
-                spam_indicators.append("✓ Excessive capitals")
-            if "click here" in user_email.lower():
-                spam_indicators.append("✓ Contains 'click here'")
-            if "verify" in user_email.lower() or "confirm" in user_email.lower():
-                spam_indicators.append("✓ Contains verification request")
-            if "congratulations" in user_email.lower() or "won" in user_email.lower():
-                spam_indicators.append("✓ Contains prize/win language")
+            # Predict
+            proba_spam = stacking_clf.predict_proba(sample)[0][1]
+            pred_class = 1 if proba_spam >= best_threshold else 0
             
-            if spam_indicators:
-                for indicator in spam_indicators:
-                    st.write(indicator)
+            # Display main result
+            if pred_class == 1:
+                st.error(f"⚠️ **SPAM DETECTED**", icon="🚨")
+                confidence = proba_spam * 100
             else:
-                st.write("✅ No obvious spam indicators detected")
-        
-        # Ensemble voting
-        st.markdown("### 🤖 Ensemble Voting (Base Models)")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        base_models_list = [
-            ('Gaussian NB', stacking_clf.estimators_[0]),
-            ('Logistic Reg', stacking_clf.estimators_[1]),
-            ('SVM', stacking_clf.estimators_[2]),
-            ('XGBoost', stacking_clf.estimators_[3])
-        ]
-        
-        for idx, (name, model) in enumerate(base_models_list):
-            with [col1, col2, col3, col4][idx]:
-                try:
-                    pred = model.predict(sample)[0]
-                    if hasattr(model, 'predict_proba'):
-                        proba = model.predict_proba(sample)[0][1]
-                    else:
-                        proba = model.decision_function(sample)[0]
-                    
-                    vote = "🔴 SPAM" if pred == 1 else "🟢 SAFE"
-                    st.metric(name, f"{proba*100:.1f}%", delta=vote)
-                except:
-                    st.write(f"⚠️ {name}: N/A")
-        
-        # Risk assessment
-        st.markdown("### ⚠️ Risk Assessment")
-        
-        if proba_spam > 0.8:
-            risk_level = "🔴 **CRITICAL**"
-            recommendation = "DO NOT click any links or download attachments"
-        elif proba_spam > 0.6:
-            risk_level = "🟠 **HIGH**"
-            recommendation = "Be cautious with links and attachments"
-        elif proba_spam > 0.4:
-            risk_level = "🟡 **MEDIUM**"
-            recommendation = "Review carefully before taking action"
-        else:
-            risk_level = "🟢 **LOW**"
-            recommendation = "Appears to be legitimate"
-        
-        st.write(f"**Risk Level:** {risk_level}")
-        st.write(f"**Recommendation:** {recommendation}")
+                st.success(f"✅ **LEGITIMATE EMAIL**", icon="✔️")
+                confidence = (1 - proba_spam) * 100
+            
+            # Key metrics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Spam Score", f"{proba_spam*100:.2f}%", delta=f"{proba_spam*100 - 50:.1f}%" if proba_spam > 0.5 else f"{proba_spam*100 - 50:.1f}%")
+            with col2:
+                st.metric("Confidence", f"{confidence:.2f}%")
+            with col3:
+                st.metric("Model Threshold", f"{best_threshold:.3f}")
+            with col4:
+                st.metric("Decision", "SPAM" if pred_class == 1 else "SAFE")
+            
+            # Detailed analysis
+            st.markdown("### 📊 Detailed Analysis")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("#### 📝 Text Statistics")
+                words = user_email.split()
+                sentences = user_email.split('.')
+                special_chars = sum(1 for c in user_email if c in string.punctuation)
+                capitals = sum(1 for c in user_email if c.isupper())
+                
+                st.write(f"• **Total Characters:** {len(user_email):,}")
+                st.write(f"• **Total Words:** {len(words):,}")
+                st.write(f"• **Total Sentences:** {len(sentences):,}")
+                st.write(f"• **Average Word Length:** {len(user_email) / max(len(words), 1):.2f}")
+                st.write(f"• **Special Characters:** {special_chars} ({special_chars/max(len(user_email), 1)*100:.2f}%)")
+                st.write(f"• **Capital Letters:** {capitals} ({capitals/max(len(user_email), 1)*100:.2f}%)")
+            
+            with col2:
+                st.markdown("#### 🔍 Spam Indicators")
+                
+                # Check for common spam patterns
+                spam_indicators = []
+                
+                if len(words) > 500:
+                    spam_indicators.append("✓ Long message (spam indicator)")
+                if special_chars / max(len(user_email), 1) > 0.1:
+                    spam_indicators.append("✓ High special character density")
+                if capitals / max(len(user_email), 1) > 0.1:
+                    spam_indicators.append("✓ Excessive capitals")
+                if "click here" in user_email.lower():
+                    spam_indicators.append("✓ Contains 'click here'")
+                if "verify" in user_email.lower() or "confirm" in user_email.lower():
+                    spam_indicators.append("✓ Contains verification request")
+                if "congratulations" in user_email.lower() or "won" in user_email.lower():
+                    spam_indicators.append("✓ Contains prize/win language")
+                
+                if spam_indicators:
+                    for indicator in spam_indicators:
+                        st.write(indicator)
+                else:
+                    st.write("✅ No obvious spam indicators detected")
+            
+            # Ensemble voting
+            st.markdown("### 🤖 Ensemble Voting (Base Models)")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            base_models_list = [
+                ('Gaussian NB', stacking_clf.estimators_[0]),
+                ('Logistic Reg', stacking_clf.estimators_[1]),
+                ('SVM', stacking_clf.estimators_[2]),
+                ('XGBoost', stacking_clf.estimators_[3])
+            ]
+            
+            for idx, (name, model) in enumerate(base_models_list):
+                with [col1, col2, col3, col4][idx]:
+                    try:
+                        pred = model.predict(sample)[0]
+                        if hasattr(model, 'predict_proba'):
+                            proba = model.predict_proba(sample)[0][1]
+                        else:
+                            proba = model.decision_function(sample)[0]
+                        
+                        vote = "🔴 SPAM" if pred == 1 else "🟢 SAFE"
+                        st.metric(name, f"{proba*100:.1f}%", delta=vote)
+                    except:
+                        st.write(f"⚠️ {name}: N/A")
+            
+            # Risk assessment
+            st.markdown("### ⚠️ Risk Assessment")
+            
+            if proba_spam > 0.8:
+                risk_level = "🔴 **CRITICAL**"
+                recommendation = "DO NOT click any links or download attachments"
+            elif proba_spam > 0.6:
+                risk_level = "🟠 **HIGH**"
+                recommendation = "Be cautious with links and attachments"
+            elif proba_spam > 0.4:
+                risk_level = "🟡 **MEDIUM**"
+                recommendation = "Review carefully before taking action"
+            else:
+                risk_level = "🟢 **LOW**"
+                recommendation = "Appears to be legitimate"
+            
+            st.write(f"**Risk Level:** {risk_level}")
+            st.write(f"**Recommendation:** {recommendation}")
 
 # ============================================
 # PAGE 2: ANALYTICS
@@ -552,131 +527,7 @@ elif page == "📊 Analytics":
         """)
 
 # ============================================
-# PAGE 3: BATCH PROCESSING
-# ============================================
-
-elif page == "📈 Batch Processing":
-    st.title("📈 Batch Email Processing")
-    st.markdown("Upload a CSV file with multiple emails for bulk analysis.")
-    
-    st.markdown("---")
-    
-    # File upload
-    st.markdown("### 📁 Upload CSV File")
-    uploaded_file = st.file_uploader(
-        "Select a CSV file",
-        type=['csv'],
-        help="CSV should have 'email_text' column (required) and optional 'label' column"
-    )
-    
-    if uploaded_file:
-        try:
-            df = pd.read_csv(uploaded_file)
-            
-            st.markdown(f"**File loaded:** {uploaded_file.name}")
-            st.write(f"**Rows:** {len(df)}, **Columns:** {len(df.columns)}")
-            
-            st.markdown("---")
-            
-            # Settings
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                threshold = st.slider("Spam Threshold", 0.0, 1.0, 0.5, 0.01)
-            with col2:
-                email_column = st.selectbox("Email Text Column", df.columns)
-            with col3:
-                process_btn = st.button("🚀 Process Batch", use_container_width=True, type="primary")
-            
-            st.markdown("---")
-            
-            if process_btn:
-                st.markdown("### ⏳ Processing...")
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                results = []
-                
-                for idx, row in df.iterrows():
-                    # Update progress
-                    progress = (idx + 1) / len(df)
-                    progress_bar.progress(progress)
-                    status_text.text(f"Processing: {idx + 1} / {len(df)}")
-                    
-                    try:
-                        text = str(row[email_column])
-                        
-                        # Extract features
-                        features = feature_extractor.transform(text)
-                        
-                        # Predict
-                        proba = stacking_clf.predict_proba(features.reshape(1, -1))[0][1]
-                        pred = 1 if proba >= threshold else 0
-                        
-                        results.append({
-                            'Email Preview': text[:50] + '...' if len(text) > 50 else text,
-                            'Spam Probability': round(proba, 4),
-                            'Prediction': 'SPAM' if pred == 1 else 'SAFE',
-                            'Confidence': round(max(proba, 1-proba)*100, 2)
-                        })
-                    except Exception as e:
-                        results.append({
-                            'Email Preview': text[:50] + '...' if len(text) > 50 else text,
-                            'Spam Probability': None,
-                            'Prediction': 'ERROR',
-                            'Confidence': 0
-                        })
-                
-                progress_bar.empty()
-                status_text.empty()
-                
-                # Display results
-                st.markdown("### ✅ Results")
-                
-                results_df = pd.DataFrame(results)
-                
-                # Summary statistics
-                col1, col2, col3, col4 = st.columns(4)
-                
-                spam_count = (results_df['Prediction'] == 'SPAM').sum()
-                safe_count = (results_df['Prediction'] == 'SAFE').sum()
-                error_count = (results_df['Prediction'] == 'ERROR').sum()
-                
-                with col1:
-                    st.metric("Total Emails", len(results_df))
-                with col2:
-                    st.metric("Spam Detected", spam_count, delta=f"{spam_count/len(results_df)*100:.1f}%")
-                with col3:
-                    st.metric("Safe Emails", safe_count, delta=f"{safe_count/len(results_df)*100:.1f}%")
-                with col4:
-                    st.metric("Errors", error_count)
-                
-                st.markdown("---")
-                
-                # Display table
-                st.dataframe(results_df, use_container_width=True)
-                
-                # Download results
-                st.markdown("---")
-                st.markdown("### 📥 Download Results")
-                
-                csv_buffer = BytesIO()
-                results_df.to_csv(csv_buffer, index=False)
-                csv_buffer.seek(0)
-                
-                st.download_button(
-                    label="📥 Download CSV Results",
-                    data=csv_buffer.getvalue(),
-                    file_name=f"batch_results_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
-        
-        except Exception as e:
-            st.error(f"❌ Error processing file: {str(e)}")
-
-# ============================================
-# PAGE 4: ABOUT MODEL
+# PAGE 3: ABOUT MODEL
 # ============================================
 
 elif page == "ℹ️ About Model":
@@ -915,13 +766,7 @@ elif page == "ℹ️ About Model":
     - Understand architecture
     - Review feature engineering
     
-    **Tab 3: Batch Processing**
-    1. Upload CSV with multiple emails
-    2. Configure threshold
-    3. Process entire batch
-    4. Download results
-    
-    **Tab 4: About Model** (you are here!)
+    **Tab 3: About Model** (you are here!)
     - Learn model details
     - Understand performance metrics
     """)
@@ -960,8 +805,9 @@ elif page == "ℹ️ About Model":
     - Docker (containerization)
     - Google Cloud Run (deployment)
     
-    **Version:** 1.0.0
-    **Created:** 2024
+    **Version:** 2.0.0 (Production Release)
+    **Model Type:** Stacking Ensemble
+    **Status:** Production Ready
     **License:** MIT
     
     ---
