@@ -13,18 +13,24 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app.py .
 
-# Copy the models directory with explicit glob pattern
-COPY models/*.pkl models/
+# Copy the entire models directory (all .pkl files)
+COPY models/ ./models/
+
+# Verify models directory exists and list files
+RUN ls -la /app/models/ || echo "Warning: models directory issue"
 
 # Copy .streamlit config
-COPY .streamlit/ .streamlit/
+COPY .streamlit/ ./.streamlit/
 
 # Expose port
 EXPOSE 8080
+
+# Set Python path
+ENV PYTHONUNBUFFERED=1
 
 # Run Streamlit on Cloud Run
 CMD ["streamlit", "run", "app.py", \
      "--server.port=8080", \
      "--server.address=0.0.0.0", \
-     "--server.enableXsrfProtection=false", \
+     "--logger.level=debug", \
      "--client.showErrorDetails=true"]
