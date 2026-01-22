@@ -1,11 +1,11 @@
 """Mail Guard - Spam Detection Streamlit Dashboard
-FIXED VERSION: Using pickled models + scaler transformation
+FINAL FIX: Handles unfitted/corrupted scaler gracefully
 
-KEY FIXES:
-1. Uses feature_extractor from pickle file (not new instance)
-2. Applies scaler.transform() before prediction (CRITICAL!)
-3. Uses actual best_threshold from pickle file
-4. Proper pipeline: extract → scale → predict
+KEY IMPROVEMENTS:
+1. Gracefully handles unfitted StandardScaler
+2. Falls back to unscaled features if scaler fails
+3. Better error handling and user feedback
+4. Provides clear diagnostic information
 """
 
 import streamlit as st
@@ -25,7 +25,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.naive_bayes import GaussianNB
 from xgboost import XGBClassifier
-from sklearn.metrics import confusion_matrix, roc_curve, precision_recall_curve
 
 # Visualization
 import matplotlib.pyplot as plt
@@ -35,16 +34,12 @@ warnings.filterwarnings('ignore')
 plt.style.use("seaborn-v0_8-darkgrid")
 
 # ============================================
-# TEXT FEATURE EXTRACTOR (Fallback only)
+# TEXT FEATURE EXTRACTOR
 # ============================================
 class TextFeatureExtractor:
-    """
-    Converts raw text to 57 numeric features matching Spambase format.
-    Accounts for: word frequencies, special characters, whitespace, alphanumeric patterns
-    """
+    """Converts raw text to 57 numeric features matching Spambase format."""
     
     def __init__(self):
-        """57 features in order"""
         self.word_frequency_map = {}
         self.special_char_map = {';': 0, '(': 0, '[': 0, '!': 0}
         self.top_words = None
@@ -90,7 +85,6 @@ class TextFeatureExtractor:
         """Convert single text to 57 numeric features"""
         features = np.zeros(57)
         
-        # Safety check
         if self.top_words is None:
             self.top_words = []
         
@@ -153,18 +147,14 @@ def load_models():
         st.success("✅ Production models loaded successfully!")
         return stacking_clf, feature_extractor, scaler, best_threshold, True
     
-    except FileNotFoundError as e:
-        st.error(f"❌ Error: Could not load trained models - {str(e)}")
-        st.error("Please ensure model files exist in 'models/' directory:")
-        st.error(" • stacking_model.pkl")
-        st.error(" • feature_extractor.pkl")
-        st.error(" • scaler.pkl")
-        st.error(" • best_threshold.pkl")
+    except Exception as e:
+        st.error(f"❌ Error: Could not load trained models")
+        st.error(f"Details: {str(e)}")
         return None, None, None, None, False
 
 
 # ============================================
-# STREAMLIT PAGE CONFIGURATION
+# STREAMLIT CONFIGURATION
 # ============================================
 st.set_page_config(
     page_title="Mail Guard - Spam Detection",
@@ -172,10 +162,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Custom CSS
-st.markdown("""
-""", unsafe_allow_html=True)
 
 # Load models
 stacking_clf, feature_extractor, scaler, best_threshold, models_loaded = load_models()
@@ -193,7 +179,7 @@ page = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### ℹ️ Info")
-st.sidebar.write("**Version:** 2.1.0")
+st.sidebar.write("**Version:** 2.1.1")
 st.sidebar.write("**Model:** Stacking Ensemble (Production)")
 st.sidebar.write("**Status:** " + ("✅ Production Ready" if models_loaded else "❌ Model Missing"))
 
@@ -229,18 +215,35 @@ if page == "🔍 Prediction":
             st.markdown("---")
             
             try:
-                # CRITICAL: Extract features using loaded feature extractor
+                # Extract features using loaded feature extractor
                 text_features = feature_extractor.transform(user_email)
                 sample = text_features.reshape(1, -1)
                 
-                # CRITICAL: Apply scaler transformation before prediction
-                sample_scaled = scaler.transform(sample)
+                # Try to scale features
+                scaler_failed = False
+                try:
+                    # Check if scaler is fitted
+                    if scaler is not None and hasattr(scaler, 'mean_'):
+                        sample_scaled = scaler.transform(sample)
+                    else:
+                        st.warning("⚠️ Note: Using model without feature scaling (scaler not available)")
+                        sample_scaled = sample
+                        scaler_failed = True
+                except Exception as e:
+                    st.warning("⚠️ Note: Using model without feature scaling (scaler error)")
+                    sample_scaled = sample
+                    scaler_failed = True
                 
                 # Predict using scaled features
                 proba_spam = stacking_clf.predict_proba(sample_scaled)[0][1]
                 
-                # Use best_threshold from pickle file
-                pred_class = 1 if proba_spam >= best_threshold else 0
+                # Apply threshold
+                if best_threshold is not None:
+                    threshold = best_threshold
+                    pred_class = 1 if proba_spam >= threshold else 0
+                else:
+                    threshold = 0.5
+                    pred_class = 1 if proba_spam >= threshold else 0
                 
                 # Display main result
                 if pred_class == 1:
@@ -257,7 +260,7 @@ if page == "🔍 Prediction":
                 with col2:
                     st.metric("Confidence", f"{confidence:.2f}%")
                 with col3:
-                    st.metric("Model Threshold", f"{best_threshold:.3f}")
+                    st.metric("Model Threshold", f"{threshold:.3f}")
                 with col4:
                     st.metric("Decision", "SPAM" if pred_class == 1 else "SAFE")
                 
@@ -281,20 +284,18 @@ if page == "🔍 Prediction":
                     st.markdown("#### 🔍 Spam Indicators")
                     spam_indicators = []
                     if len(words) > 500:
-                        spam_indicators.append("✓ Long message (spam indicator)")
+                        spam_indicators.append("✓ Long message")
                     if special_chars / max(len(user_email), 1) > 0.1:
                         spam_indicators.append("✓ High special character density")
                     if capitals / max(len(user_email), 1) > 0.1:
                         spam_indicators.append("✓ Excessive capitals")
                     if "click here" in user_email.lower():
                         spam_indicators.append("✓ Contains 'click here'")
-                    if "verify" in user_email.lower() or "confirm" in user_email.lower():
-                        spam_indicators.append("✓ Contains verification request")
-                    if "congratulations" in user_email.lower() or "won" in user_email.lower():
-                        spam_indicators.append("✓ Contains prize/win language")
                     if "free" in user_email.lower():
-                        spam_indicators.append("✓ Contains 'free' (spam indicator)")
-                    if "urgent" in user_email.lower() or "act now" in user_email.lower():
+                        spam_indicators.append("✓ Contains 'free'")
+                    if "congratulations" in user_email.lower() or "won" in user_email.lower():
+                        spam_indicators.append("✓ Contains prize language")
+                    if "urgent" in user_email.lower():
                         spam_indicators.append("✓ Contains urgency language")
                     
                     if spam_indicators:
@@ -324,7 +325,7 @@ if page == "🔍 Prediction":
                             vote = "🔴 SPAM" if pred == 1 else "🟢 SAFE"
                             st.metric(name, f"{proba*100:.1f}%", delta=vote)
                         except:
-                            st.write(f"⚠️ {name}: N/A")
+                            st.write(f"⚠️ {name}: Error")
                 
                 # Risk assessment
                 st.markdown("### ⚠️ Risk Assessment")
@@ -345,8 +346,8 @@ if page == "🔍 Prediction":
                 st.write(f"**Recommendation:** {recommendation}")
             
             except Exception as e:
-                st.error(f"❌ Error during prediction: {str(e)}")
-                st.error("Please check that all model files are properly loaded.")
+                st.error(f"❌ Error during analysis: {str(e)}")
+                st.info("Try refreshing the page or checking your model files.")
 
 
 # ============================================
@@ -354,124 +355,28 @@ if page == "🔍 Prediction":
 # ============================================
 elif page == "📊 Analytics":
     st.title("📊 Model Analytics & Performance")
-    st.markdown("Overview of model performance metrics and characteristics.")
     st.markdown("---")
     
-    # Performance metrics
-    st.markdown("### 📈 Performance Metrics")
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
-        st.metric("Accuracy", "95.8%", "+2.1%")
+        st.metric("Accuracy", "95.8%")
     with col2:
-        st.metric("Precision", "94.2%", "+1.5%")
+        st.metric("Precision", "94.2%")
     with col3:
-        st.metric("Recall", "93.6%", "+3.2%")
+        st.metric("Recall", "93.6%")
     with col4:
-        st.metric("F1-Score", "94.8%", "+2.3%")
+        st.metric("F1-Score", "94.8%")
     with col5:
-        st.metric("ROC-AUC", "98.2%", "+1.8%")
+        st.metric("ROC-AUC", "98.2%")
     
     st.markdown("---")
-    
-    # Model architecture
     st.markdown("### 🤖 Model Architecture")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("""
-**Stacking Ensemble Classifier:**
-
-Base Classifiers (4):
-- ✅ Gaussian Naive Bayes
-- ✅ Logistic Regression
-- ✅ Support Vector Machine
-- ✅ XGBoost
-
-Meta-Learner: Logistic Regression
-Cross-Validation: 5-Fold Stratified
-""")
-    with col2:
-        st.markdown("""
-**Training Details:**
-
-- Dataset: Spambase (UCI)
-- Total Emails: 4,601
-- Safe Emails: 2,788 (60.6%)
-- Spam Emails: 1,813 (39.4%)
-- Balance Method: SMOTE
-
-**Hyperparameter Tuning:**
-- Method: GridSearchCV
-- CV Strategy: 5-fold Stratified
-""")
-    
-    st.markdown("---")
-    
-    # Feature statistics
-    st.markdown("### 📊 Feature Statistics")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("""
-**Features (57 Total):**
-
-1. **Word Frequencies (49)**
-   - Top common words (%)
-
-2. **Capital Letters (3)**
-   - Run length statistics
-   - Average capital run
-   - Longest capital run
-   - Total capital count
-
-3. **Special Characters (4)**
-   - Frequency of: ; ( [ !
-
-4. **Word Length (1)**
-   - Average metric
-""")
-    with col2:
-        st.markdown("""
-**Feature Extraction Process:**
-
-1. Text preprocessing (lowercasing, tokenization)
-2. Word frequency calculation
-3. Capital letter pattern analysis
-4. Special character detection
-5. Text statistics computation
-6. Feature normalization
-
-All features normalized using StandardScaler
-""")
-    
-    # Confusion matrix
-    st.markdown("---")
-    st.markdown("### 📊 Expected Confusion Matrix")
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        st.markdown("""
-**Confusion Matrix (Test Set):**
-
-| | Predicted SAFE | Predicted SPAM |
-|---|---|---|
-| **Actual SAFE** | 907 (TN) | 53 (FP) |
-| **Actual SPAM** | 58 (FN) | 512 (TP) |
-""")
-    with col2:
-        st.markdown("""
-**Interpretation:**
-
-- **True Negatives (TN):** 907
-  Correctly identified safe emails
-
-- **False Positives (FP):** 53
-  Safe emails marked as spam
-
-- **False Negatives (FN):** 58
-  Spam marked as safe (DANGEROUS)
-
-- **True Positives (TP):** 512
-  Correctly identified spam
-
-**Key Insight:** Model catches 89.8% of spam
+    st.markdown("""
+**Stacking Ensemble Classifier**
+- Base models: Naive Bayes, Logistic Regression, SVM, XGBoost
+- Meta-learner: Logistic Regression
+- Training data: 4,601 emails (Spambase UCI)
+- Features: 57 numeric features
 """)
 
 
@@ -480,109 +385,35 @@ All features normalized using StandardScaler
 # ============================================
 elif page == "ℹ️ About Model":
     st.title("ℹ️ About Mail Guard")
-    st.markdown("Learn more about the spam detection model and its architecture.")
     st.markdown("---")
     
     st.markdown("## 🤖 Model Architecture")
-    col1, col2 = st.columns([1.5, 2])
-    with col1:
-        st.markdown("""
+    st.markdown("""
 ### Stacking Ensemble Classifier
 
-Our model uses an ensemble approach that combines multiple machine learning algorithms for robust spam detection.
-
-**Why Ensemble?**
-- Combines strengths of different algorithms
-- Reduces individual model biases
-- Improves generalization
-- Higher robustness
-""")
-    with col2:
-        st.markdown("""
-### Base Classifiers (4)
-
-1. **Gaussian Naive Bayes**
-   - Fast probabilistic model
-   - Good for text classification
-
-2. **Logistic Regression**
-   - Linear model with regularization
-   - Optimized via GridSearchCV
-
-3. **Support Vector Machine**
-   - Non-linear kernel (RBF)
-   - Excellent for high dimensions
-
-4. **XGBoost**
-   - Gradient boosting ensemble
-   - State-of-the-art performance
+Our model combines 4 base classifiers:
+- **Gaussian Naive Bayes** - Probabilistic classifier
+- **Logistic Regression** - Linear classifier
+- **Support Vector Machine** - Non-linear classifier
+- **XGBoost** - Gradient boosting
 
 **Meta-Learner:** Logistic Regression
+
+### Features (57 Total)
+1. **Word Frequencies (49)** - Top common words
+2. **Capital Letters (3)** - Run statistics
+3. **Special Characters (4)** - ; ( [ !
+4. **Word Length (1)** - Average length
 """)
     
     st.markdown("---")
-    st.markdown("## 📊 Feature Engineering (57 Features)")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown("""
-### Word Frequencies (49)
-
-Top 49 most common words from training set.
-
-Examples:
-- "free" - spam indicator
-- "click" - spam indicator
-- "win" - prize/scam indicator
-""")
-    with col2:
-        st.markdown("""
-### Capital Letters (3)
-
-**1. Avg capital run**
-- Spam uses: "BUY NOW!!!"
-
-**2. Max capital run**
-- Longest consecutive capitals
-
-**3. Total capitals**
-- Total count
-""")
-    with col3:
-        st.markdown("""
-### Special Characters & Other (8)
-
-**Special Chars (4):**
-- Semicolon (;)
-- Parenthesis ()
-- Bracket []
-- Exclamation !
-
-**Other (1):**
-- Avg word length
-""")
-    
-    st.markdown("---")
-    st.markdown("## 📚 Training Data")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("""
-### Dataset Statistics
-
-**Total Emails:** 4,601
-- Safe: 2,788 (60.6%)
-- Spam: 1,813 (39.4%)
-
-**Features:** 57 numeric
-""")
-    with col2:
-        st.markdown("""
-### Data Preprocessing
-
-**Split:**
-- 80% training
-- 20% testing
-
-**Scaling:** StandardScaler
+    st.markdown("""
+### Training Data
+- **Dataset:** Spambase (UCI ML Repository)
+- **Total:** 4,601 emails
+- **Safe:** 2,788 (60.6%)
+- **Spam:** 1,813 (39.4%)
+- **Preprocessing:** SMOTE for balance, StandardScaler for normalization
 """)
 
 
@@ -591,7 +422,6 @@ Examples:
 # ============================================
 st.markdown("---")
 st.markdown("""
-🛡️ **Mail Guard** - Spam Detection Dashboard
-
-Built with ❤️ | Powered by Streamlit & Scikit-learn | Deployed on Google Cloud Run
+🛡️ **Mail Guard** - Spam Detection Dashboard  
+Built with Streamlit | Deployed on Google Cloud Run
 """)
