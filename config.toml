@@ -13,10 +13,11 @@ toolbarMode = "viewer"
 level = "info"
 
 [server]
-port = 8501
+port = 8080
 headless = true
 runOnSave = true
 maxUploadSize = 200
+enableXsrfProtection = false
 
 [browser]
 gatherUsageStats = false
@@ -24,3 +25,10 @@ gatherUsageStats = false
 [ui]
 hideTopBar = false
 hideSidebarNav = false
+
+[runner]
+magicEnabled = true
+</parameter>
+
+## 📋 Your complete repo structure should now be:
+
