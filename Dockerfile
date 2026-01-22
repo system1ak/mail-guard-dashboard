@@ -22,7 +22,7 @@ RUN ls -la /app/models/ || echo "Warning: models directory issue"
 # Create .streamlit directory for configuration
 RUN mkdir -p .streamlit
 
-# Create Streamlit config file
+# Create Streamlit config file with Cloud Run port compatibility
 RUN echo "[theme]" > .streamlit/config.toml && \
     echo "primaryColor = \"#667eea\"" >> .streamlit/config.toml && \
     echo "backgroundColor = \"#ffffff\"" >> .streamlit/config.toml && \
@@ -30,15 +30,25 @@ RUN echo "[theme]" > .streamlit/config.toml && \
     echo "textColor = \"#262730\"" >> .streamlit/config.toml && \
     echo "" >> .streamlit/config.toml && \
     echo "[server]" >> .streamlit/config.toml && \
-    echo "port = 8501" >> .streamlit/config.toml && \
+    echo "port = 8080" >> .streamlit/config.toml && \
     echo "headless = true" >> .streamlit/config.toml && \
-    echo "runOnSave = true" >> .streamlit/config.toml
+    echo "runOnSave = true" >> .streamlit/config.toml && \
+    echo "enableCORS = false" >> .streamlit/config.toml && \
+    echo "maxUploadSize = 50" >> .streamlit/config.toml
 
-# Expose Streamlit port
-EXPOSE 8501
+# Expose port 8080 (Cloud Run standard)
+EXPOSE 8080
+
+# Set environment variable for Cloud Run
+ENV PORT=8080
 
 # Health check
-HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl --fail http://localhost:8080/_stcore/health || exit 1
 
-# Run Streamlit application
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+# Run Streamlit application with dynamic port from environment
+CMD exec streamlit run app.py \
+    --server.port=${PORT} \
+    --server.address=0.0.0.0 \
+    --logger.level=debug \
+    --client.showErrorDetails=true
