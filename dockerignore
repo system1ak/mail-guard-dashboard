@@ -1,22 +1,22 @@
+# Don't ignore models!
+!models/
+!models/**
+
+# Ignore these
+.git
+.gitignore
+.env
+.env.local
 __pycache__
 *.pyc
 *.pyo
-*.pyd
-.Python
-*.so
-.git
-.gitignore
-README.md
-*.env
-.DS_Store
-.venv
-venv/
-env/
 .pytest_cache
+.coverage
 *.egg-info
 dist/
 build/
-.eggs/
-*.egg
-.coverage
-htmlcov/
+.DS_Store
+.streamlit/secrets.toml
+.idea/
+.vscode/
+*.log
