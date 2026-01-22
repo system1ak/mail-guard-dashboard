@@ -13,6 +13,7 @@ import string
 from collections import Counter
 from io import BytesIO
 from pathlib import Path
+import sys
 
 # ML & Data Processing
 from sklearn.preprocessing import StandardScaler
@@ -172,42 +173,55 @@ class TextFeatureExtractor:
 def load_models():
     """Load pre-trained models from pickle files"""
     try:
-        # Get the correct path for Streamlit Cloud and local deployments
-        base_path = Path(__file__).parent
-        models_dir = base_path / "models"
+        # Get all possible paths to check
+        possible_paths = [
+            # Path 1: Docker/Cloud Run
+            Path("/app/models"),
+            # Path 2: Current working directory
+            Path.cwd() / "models",
+            # Path 3: Script directory
+            Path(__file__).parent / "models",
+            # Path 4: Relative path
+            Path("models"),
+        ]
 
-        # Alternative path for Streamlit Cloud
-        if not models_dir.exists():
-            models_dir = Path("models")
+        models_dir = None
+        for path in possible_paths:
+            if path.exists():
+                models_dir = path
+                break
 
-        # If still not found, try current working directory
-        if not models_dir.exists():
-            models_dir = Path.cwd() / "models"
+        if models_dir is None:
+            raise FileNotFoundError(f"Models directory not found. Tried: {[str(p) for p in possible_paths]}")
 
+        st.sidebar.info(f"📁 Found models in: {models_dir}")
+
+        # Define file paths
         stacking_model_path = models_dir / "stacking_model.pkl"
         feature_extractor_path = models_dir / "feature_extractor.pkl"
         scaler_path = models_dir / "scaler.pkl"
         best_threshold_path = models_dir / "best_threshold.pkl"
 
-        # Debug: Show which path we're using
-        st.sidebar.info(f"📁 Looking for models in: {models_dir}")
-
-        # Check if files exist
+        # Check all required files exist
+        missing_files = []
         if not stacking_model_path.exists():
-            raise FileNotFoundError(f"stacking_model.pkl not found at {stacking_model_path}")
+            missing_files.append("stacking_model.pkl")
         if not feature_extractor_path.exists():
-            raise FileNotFoundError(f"feature_extractor.pkl not found at {feature_extractor_path}")
+            missing_files.append("feature_extractor.pkl")
         if not best_threshold_path.exists():
-            raise FileNotFoundError(f"best_threshold.pkl not found at {best_threshold_path}")
+            missing_files.append("best_threshold.pkl")
 
-        # Load models
+        if missing_files:
+            raise FileNotFoundError(f"Missing files: {', '.join(missing_files)}")
+
+        # Load all models
         with open(stacking_model_path, 'rb') as f:
             stacking_clf = pickle.load(f)
 
         with open(feature_extractor_path, 'rb') as f:
             feature_extractor = pickle.load(f)
 
-        # Scaler is optional (may not be used in pipeline)
+        # Scaler is optional
         scaler = None
         if scaler_path.exists():
             with open(scaler_path, 'rb') as f:
@@ -227,8 +241,11 @@ def load_models():
         st.sidebar.error("  • best_threshold.pkl")
         st.sidebar.error("  • scaler.pkl (optional)")
         return None, None, None, None, False
+
     except Exception as e:
         st.sidebar.error(f"❌ Unexpected error: {str(e)}")
+        import traceback
+        st.sidebar.error(f"Traceback: {traceback.format_exc()}")
         return None, None, None, None, False
 
 
@@ -402,8 +419,8 @@ if page == "🔍 Prediction":
                         )[0][1]
                     vote = "🔴 SPAM" if pred == 1 else "🟢 SAFE"
                     st.metric(name, f"{proba*100:.1f}%", delta=vote)
-                except:
-                    st.write(f"⚠️ {name}: N/A")
+                except Exception as e:
+                    st.write(f"⚠️ {name}: Error")
 
         # Risk assessment
         st.markdown("### ⚠️ Risk Assessment")
