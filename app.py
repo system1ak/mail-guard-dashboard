@@ -1,6 +1,11 @@
 """Mail Guard - Spam Detection Streamlit Dashboard
 Automatically generated from Jupyter Notebook
 Original: https://colab.research.google.com/drive/12OztXPk52B1Sa2J-Q6zwgtTNqjQZ5VNl
+
+FIXES APPLIED:
+1. Removed "Confidence Display" dropdown selector
+2. Fixed prediction logic - using raw probability threshold instead of best_threshold
+3. Better spam/safe classification
 """
 
 import streamlit as st
@@ -183,7 +188,7 @@ def load_models():
         with open('models/best_threshold.pkl', 'rb') as f:
             best_threshold = pickle.load(f)
         
-        st.success("✅ Production models loaded successfully!")
+        st.success("✅  models loaded successfully!")
         return stacking_clf, feature_extractor, scaler, best_threshold, True
     
     except FileNotFoundError as e:
@@ -257,13 +262,6 @@ if page == "🔍 Prediction":
             st.write("")
             submit_btn = st.button("🔍 Analyze", use_container_width=True, type="primary")
         
-        # Settings
-        col1, col2 = st.columns(2)
-        with col1:
-            confidence_level = st.selectbox("Confidence Display", ["High", "Medium", "Low"])
-        with col2:
-            st.write("")  # Placeholder for spacing
-        
         # Analysis
         if submit_btn and user_email:
             st.markdown("---")
@@ -272,9 +270,11 @@ if page == "🔍 Prediction":
             text_features = feature_extractor.transform(user_email)
             sample = text_features.reshape(1, -1)
             
-            # Predict
+            # Predict - FIXED: Using 0.5 threshold for proper classification
             proba_spam = stacking_clf.predict_proba(sample)[0][1]
-            pred_class = 1 if proba_spam >= best_threshold else 0
+            
+            # FIXED LOGIC: Use 0.5 as threshold (standard probability threshold)
+            pred_class = 1 if proba_spam >= 0.5 else 0
             
             # Display main result
             if pred_class == 1:
@@ -287,11 +287,11 @@ if page == "🔍 Prediction":
             # Key metrics
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric("Spam Score", f"{proba_spam*100:.2f}%", delta=f"{proba_spam*100 - 50:.1f}%" if proba_spam > 0.5 else f"{proba_spam*100 - 50:.1f}%")
+                st.metric("Spam Score", f"{proba_spam*100:.2f}%")
             with col2:
                 st.metric("Confidence", f"{confidence:.2f}%")
             with col3:
-                st.metric("Model Threshold", f"{best_threshold:.3f}")
+                st.metric("Model Threshold", "50%")
             with col4:
                 st.metric("Decision", "SPAM" if pred_class == 1 else "SAFE")
             
@@ -471,7 +471,7 @@ All features normalized using StandardScaler
     
     # Confusion matrix visualization
     st.markdown("---")
-    st.markdown("### 📊 Expected Confusion Matrix")
+    st.markdown("### 📊Confusion Matrix")
     col1, col2 = st.columns([1, 2])
     with col1:
         st.markdown("""
@@ -752,18 +752,18 @@ All normalized as percentages or averages.
     st.markdown("""
 ### 📝 About This Project
 
-**Mail Guard** is a production-ready spam detection system built with:
+**Mail Guard** is a  spam detection system built with:
 - Python 3.10+
 - Streamlit (frontend)
 - scikit-learn & XGBoost (ML)
 - Docker (containerization)
 - Google Cloud Run (deployment)
 
-**Version:** 2.0.0 (Production Release)
+**Version:** 2.0.0 (fixed version)
 
 **Model Type:** Stacking Ensemble
 
-**Status:** Production Ready
+**Status:**  Ready
 
 **License:** MIT
 
@@ -782,5 +782,5 @@ st.markdown("""
 
 **Mail Guard** - Spam Detection Dashboard
 
-Built with ❤️ | Powered by Streamlit & Scikit-learn | Deployed on Google Cloud Run
+ Deployed on Google Cloud Run
 """)
