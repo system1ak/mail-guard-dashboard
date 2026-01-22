@@ -19,8 +19,11 @@ COPY models/ ./models/
 # Verify models directory exists and list files
 RUN ls -la /app/models/ || echo "Warning: models directory issue"
 
-# Copy .streamlit config
-COPY .streamlit/ ./.streamlit/
+# Create .streamlit directory (if not present)
+RUN mkdir -p .streamlit
+
+# Copy .streamlit config if it exists
+COPY .streamlit/ .streamlit/ 2>/dev/null || true
 
 # Expose port
 EXPOSE 8080
