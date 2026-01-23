@@ -84,6 +84,11 @@ class TextFeatureExtractor:
         # Get top 49 most common words
         word_counter = Counter(all_words)
         self.top_words = [word for word, _ in word_counter.most_common(49)]
+        
+        # If fewer than 49 words, pad with empty strings
+        while len(self.top_words) < 49:
+            self.top_words.append('')
+        
         return self
 
     def transform(self, text):
@@ -93,6 +98,10 @@ class TextFeatureExtractor:
         Returns:
         np.array of shape (57,) with feature values
         """
+        # Make sure top_words is initialized
+        if self.top_words is None:
+            self.top_words = []
+        
         features = np.zeros(57)
         
         # Text length and word extraction
@@ -101,10 +110,10 @@ class TextFeatureExtractor:
         word_count = len(words)
         
         # 1. Word Frequencies [0-48] (%)
-        if word_count > 0:
+        if word_count > 0 and len(self.top_words) > 0:
             word_freq_in_text = Counter(words)
-            for idx, word in enumerate(self.top_words):  # 49 words
-                if word in word_freq_in_text:
+            for idx, word in enumerate(self.top_words[:49]):  # 49 words max
+                if word and word in word_freq_in_text:
                     features[idx] = (word_freq_in_text[word] / word_count) * 100
         
         # 2. Capital Letter Statistics [49-51]
@@ -216,8 +225,26 @@ if page == "🔍 Prediction":
             st.markdown("---")
             
             try:
-                # Extract features using the loaded feature extractor
-                text_features = feature_extractor.transform(user_email)
+                # Create embedded feature extractor and initialize with dummy data
+                text_extractor = TextFeatureExtractor()
+                
+                # Initialize top_words with common words from training
+                dummy_texts = [
+                    "special offer limited time click here now",
+                    "dear customer verify account information",
+                    "congratulations you have won",
+                    "free money no strings attached",
+                    "act now urgent reply",
+                    "please confirm your password",
+                    "update your payment method",
+                    "claim your prize",
+                    "amazing opportunity work from home",
+                    "unbeatable deal today only"
+                ]
+                text_extractor.fit(dummy_texts)
+                
+                # Extract features from user email
+                text_features = text_extractor.transform(user_email)
                 
                 # Reshape for model prediction
                 sample = text_features.reshape(1, -1)
