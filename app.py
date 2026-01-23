@@ -201,7 +201,7 @@ page = st.sidebar.radio("Select Page:", ["🔍 Prediction", "📊 Analytics", "�
 st.sidebar.markdown("---")
 st.sidebar.markdown("### ℹ️ Info")
 st.sidebar.write("**Version:** 2.0.0")
-st.sidebar.write("**Model:** Stacking Ensemble (Production)")
+st.sidebar.write("**Model:** Stacking Ensemble")
 st.sidebar.write("**Status:** " + ("✅  Ready" if models_loaded else "❌ Model Missing"))
 
 # PAGE 1: PREDICTION
@@ -421,7 +421,7 @@ elif page == "📊 Analytics":
 # PAGE 3: ABOUT
 elif page == "ℹ️ About Model":
     st.title("ℹ️ About Mail Guard")
-    st.markdown("**Mail Guard** is a production-ready spam detection system using an advanced Stacking Ensemble with 4 specialized base classifiers and a meta-learner.")
+    st.markdown("**Mail Guard** is a AI spam detection system using an advanced Stacking Ensemble with 4 specialized base classifiers and a meta-learner.")
     
     st.markdown("---")
     st.markdown("### 🎯 Model Architecture")
@@ -602,8 +602,14 @@ elif page == "ℹ️ About Model":
     **Dataset:**
     - UCI Machine Learning Repository: Spambase Dataset
     - URL: https://archive.ics.uci.edu/ml/datasets/spambase
+    
     **GitHub:**
     - https://github.com/system1ak/mail-guard-dashboard
+
+    **Google-colab model file:**
+    - https://colab.research.google.com/drive/12OztXPk52B1Sa2J-Q6zwgtTNqjQZ5VNl?usp=sharing
+
+       
 
     
     """)
