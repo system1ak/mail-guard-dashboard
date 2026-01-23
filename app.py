@@ -175,7 +175,7 @@ def load_models():
         with open('models/best_threshold.pkl', 'rb') as f:
             best_threshold = pickle.load(f)
         
-        st.success("✅ Production models loaded successfully!")
+        st.success("✅  models loaded successfully!")
         return stacking_clf, feature_extractor, scaler, best_threshold, True
     except Exception as e:
         st.error(f"❌ Error loading models: {str(e)}")
@@ -202,7 +202,7 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### ℹ️ Info")
 st.sidebar.write("**Version:** 2.0.0")
 st.sidebar.write("**Model:** Stacking Ensemble (Production)")
-st.sidebar.write("**Status:** " + ("✅ Production Ready" if models_loaded else "❌ Model Missing"))
+st.sidebar.write("**Status:** " + ("✅  Ready" if models_loaded else "❌ Model Missing"))
 
 # PAGE 1: PREDICTION
 if page == "🔍 Prediction":
@@ -565,9 +565,9 @@ elif page == "ℹ️ About Model":
     """)
     
     st.markdown("---")
-    st.markdown("### ✅ Production Readiness")
+    st.markdown("### ✅ full Readiness")
     st.write("""
-    **Deployment Status:** ✅ Production Ready
+    **Deployment Status:** ✅  Ready
     
     **Validation Completed:**
     ✓ Cross-validation performance verified
@@ -602,6 +602,10 @@ elif page == "ℹ️ About Model":
     **Dataset:**
     - UCI Machine Learning Repository: Spambase Dataset
     - URL: https://archive.ics.uci.edu/ml/datasets/spambase
+    **GitHub:**
+    - https://github.com/system1ak/mail-guard-dashboard
+
+    
     """)
 
 st.markdown("---")
