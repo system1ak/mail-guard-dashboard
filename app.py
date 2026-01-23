@@ -249,8 +249,18 @@ if page == "🔍 Prediction":
                 # Reshape for model prediction
                 sample = text_features.reshape(1, -1)
                 
-                # Scale features
-                sample_scaled = scaler.transform(sample)
+                # Create a new scaler and fit it with dummy features (in case loaded scaler is not fitted)
+                if scaler is None or not hasattr(scaler, 'mean_'):
+                    # Generate dummy features for fitting the scaler
+                    dummy_features = np.array([
+                        text_extractor.transform(text) for text in dummy_texts
+                    ])
+                    new_scaler = StandardScaler()
+                    new_scaler.fit(dummy_features)
+                    sample_scaled = new_scaler.transform(sample)
+                else:
+                    # Use loaded scaler
+                    sample_scaled = scaler.transform(sample)
                 
                 # Get prediction probability
                 proba_spam = stacking_clf.predict_proba(sample_scaled)[0][1]
