@@ -1,6 +1,6 @@
 """Mail Guard - Spam Detection Streamlit Dashboard
 Automatically generated from Jupyter Notebook
-Original: [https://colab.research.google.com/drive/12OztXPk52B1Sa2J-Q6zwgtTNqjQZ5VNl](https://colab.research.google.com/drive/12OztXPk52B1Sa2J-Q6zwgtTNqjQZ5VNl)
+Original: https://colab.research.google.com/drive/12OztXPk52B1Sa2J-Q6zwgtTNqjQZ5VNl
 """
 
 # ============================================
