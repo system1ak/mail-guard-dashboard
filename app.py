@@ -31,7 +31,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ============================================
-# TEXT FEATURE EXTRACTOR 
+# TEXT FEATURE EXTRACTOR (EXACT COPY FROM COLAB)
 # ============================================
 class TextFeatureExtractor:
     """Converts raw text to 57 numeric features matching Spambase format."""
@@ -123,7 +123,7 @@ class TextFeatureExtractor:
 
 
 # ============================================
-# PREDICTION FUNCTION 
+# PREDICTION FUNCTION (FROM YOUR COLAB)
 # ============================================
 def predict_spam(email_text, stacking_clf, feature_extractor, scaler):
     """
